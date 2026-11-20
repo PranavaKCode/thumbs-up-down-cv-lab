@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thumbs Up / Down Lab</title>
+  <meta name="description" content="Teach your webcam to recognize thumbs up and thumbs down, one visible step at a time, in the browser.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#top">thumbs-lab</a>
+  <div class="camera-bar">
+    <span class="cam-dot" id="camDot" aria-hidden="true"></span>
+    <span id="camLabel">camera off</span>
+    <select id="camSelect" hidden aria-label="Choose a camera"></select>
+    <div class="seg small" id="practiceBar" hidden role="group" aria-label="What the practice camera shows">
+      <button data-gesture="none">empty</button>
+      <button data-gesture="thumbs_up">up</button>
+      <button data-gesture="thumbs_down">down</button>
+    </div>
+    <button class="btn small" id="camStop" hidden>stop camera</button>
+  </div>
+</header>
+
+<div class="layout" id="top">
+  <nav class="toc" aria-label="Steps">
+    <p class="toc-title">steps</p>
+    <ol>
+      <li><a href="#camera" data-step="camera">webcam</a></li>
+      <li><a href="#background" data-step="background">background</a></li>
+      <li><a href="#collect" data-step="collect">training photos</a></li>
+      <li><a href="#grayscale" data-step="grayscale">grayscale</a></li>
+      <li><a href="#mask" data-step="mask">mask</a></li>
+      <li><a href="#silhouette" data-step="silhouette">silhouette</a></li>
+      <li><a href="#features" data-step="features">features</a></li>
+      <li><a href="#train" data-step="train">train</a></li>
+      <li><a href="#test" data-step="test">test</a></li>
+      <li><a href="#live" data-step="live">live</a></li>
+      <li><a href="#save" data-step="save">save</a></li>
+    </ol>
+    <a href="#help" class="toc-help">troubleshooting</a>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <h1>Teach your webcam to recognize thumbs up and thumbs down</h1>
+      <p>Collect photos, turn them into black-and-white silhouettes, train a classifier, and watch its predictions on live camera images. Everything runs in this browser tab. Nothing is installed and nothing is uploaded.</p>
+      <p class="sequence">camera → background → labeled photos → grayscale → black-and-white mask → cleaned silhouette → features → training → testing → live predictions</p>
+      <p><b>Before you start</b></p>
+      <ul>
+        <li>Use a plain, still background that contrasts with your hand. Keep the camera and lighting still the whole time.</li>
+        <li>Do the steps in order. Each step shows its result. "Show the code" shows the exact code that produced it.</li>
+        <li>No webcam, or it's blocked? Click <b>Use practice camera</b>. It shows a drawn hand you control with the <b>empty / up / down</b> buttons in the top bar.</li>
+        <li>Photos are kept in this tab only. Refreshing or closing it erases them. Use <a href="#save">step 11</a> to download a copy.</li>
+      </ul>
+    </section>
+
+    <!-- 1 -->
+    <section id="camera" class="step">
+      <header class="step-head"><span class="num">01</span><h2>Open your webcam</h2></header>
+      <p>Click <b>Start camera</b> and allow your browser to use the webcam. The white square is the <b>region of interest</b> (ROI). Only what is inside it is used: it is cropped, mirrored to match the preview, and shrunk to <b>224 × 224 pixels</b>.</p>
+      <ul class="tips">
+        <li>Keep your whole hand and thumb inside the square, with as little forearm as practical.</li>
+        <li>Keep your face and body outside the square.</li>
+        <li>Avoid strong shadows.</li>
+      </ul>
+      <div class="cam-row">
+        <div class="cam-col">
+          <div data-camera></div>
+          <div class="controls"><button class="btn primary" id="checkCapture">Capture one</button></div>
+          <p class="status" id="checkStatus" role="status"></p>
+        </div>
+        <div class="side-col">
+          <figure class="view"><canvas id="checkCanvas" width="224" height="224"></canvas><figcaption>What the computer receives</figcaption></figure>
+          <p class="readout" id="checkReadout">Capture a photo to see the cropped image and its size.</p>
+        </div>
+      </div>
+      <details class="code"><summary>Show the code</summary><pre data-code="snapshot"></pre></details>
+    </section>
+
+    <!-- 2 -->
+    <section id="background" class="step">
+      <header class="step-head"><span class="num">02</span><h2>Record an empty background</h2></header>
+      <p>Take your hand out of the square and click <b>Capture background</b>. Seven frames are recorded and combined into one reference image using the <b>median</b> of every pixel, which is the middle value of the seven. That ignores small flickers and camera noise.</p>
+      <p>Later, pixels that differ from this reference become the <b>foreground</b>. Keep the camera and lighting still. If either one changes, record the background again.</p>
+      <div data-background="train"></div>
+      <details class="code"><summary>Show the code</summary><pre data-code="medianImage"></pre></details>
+    </section>
+
+    <!-- 3 -->
+    <section id="collect" class="step">
+      <header class="step-head"><span class="num">03</span><h2>Collect labeled training photos</h2></header>
+      <p>Each example needs a photo and the correct label. Aim for <b>60 photos of each gesture</b>. Slowly change the position, distance and angle of your hand between photos. Use the same background and lighting for both gestures.</p>
+      <ol class="tips">
+        <li>Pick the gesture you are about to show. The label comes from that button; the camera does not guess it.</li>
+        <li>Click <b>Capture one</b> for single photos, or <b>Start burst</b> to take one every 0.4 seconds. The burst stops at 60.</li>
+        <li>Watch the live mask preview. If your hand is not a clear white shape there, fix the background or lighting before collecting more.</li>
+        <li>Click a thumbnail to delete a bad photo (wrong label, thumb cut off, hand outside the square).</li>
+      </ol>
+      <div data-collector="train"></div>
+    </section>
+
+    <!-- 4 -->
+    <section id="grayscale" class="step">
+      <header class="step-head"><span class="num">04</span><h2>Convert a photo to grayscale</h2></header>
+      <p>Pick one training photo to follow through steps 4 to 7. Click a different one at any time.</p>
+      <div class="picker" id="examplePicker"></div>
+      <p class="empty-note" data-empty-note>Collect some training photos in step 3 to fill in steps 4 to 7.</p>
+      <div class="views">
+        <figure class="view"><canvas data-view="original"></canvas><figcaption>original photo</figcaption></figure>
+        <figure class="view"><canvas data-view="gray"></canvas><figcaption>grayscale</figcaption></figure>
+        <figure class="view"><canvas data-view="backgroundGray"></canvas><figcaption>its background (grayscale)</figcaption></figure>
+      </div>
+      <p class="readout" id="pixelReadout">Point at the original or grayscale photo to inspect a pixel.</p>
+      <p>A color pixel has three numbers (red, green, blue). A grayscale pixel has one brightness number: <code>gray = 0.299 × red + 0.587 × green + 0.114 × blue</code>. Green counts most because our eyes are most sensitive to it. Grayscale still has 256 levels; the next step reduces it to black and white.</p>
+      <details class="code"><summary>Show the code</summary><pre data-code="toGray"></pre></details>
+    </section>
+
+    <!-- 5 -->
+    <section id="mask" class="step">
+      <header class="step-head"><span class="num">05</span><h2>Create and clean a black-and-white mask</h2></header>
+      <p class="hint">The sliders in this step change how every photo is processed, including the live mask previews in steps 3 and 9. <button class="link" id="resetSettings">Reset sliders to defaults</button></p>
+
+      <h3>A. Blur, then subtract the background</h3>
+      <p>A small <b>Gaussian blur</b> reduces pixel noise. Then each pixel is compared with the same pixel in the background. The <b>absolute difference</b> is large where something changed (brighter or darker) and near zero where nothing did.</p>
+      <label class="slider"><span>blur size</span><input type="range" data-setting="blurSize" min="1" max="15" step="2"><output></output></label>
+      <div class="views">
+        <figure class="view"><canvas data-view="backgroundBlurred"></canvas><figcaption>blurred background</figcaption></figure>
+        <figure class="view"><canvas data-view="blurred"></canvas><figcaption>blurred photo</figcaption></figure>
+        <figure class="view"><canvas data-view="difference"></canvas><figcaption>absolute difference</figcaption></figure>
+      </div>
+      <details class="code"><summary>Show the code</summary><pre data-code="gaussianKernel,gaussianBlur,absDiff"></pre></details>
+
+      <h3>B. Threshold the difference</h3>
+      <p>Each pixel whose difference is <b>above the threshold</b> becomes white (255). Everything else becomes black (0). The histogram counts how many pixels have each difference value; the ones right of the line turn white.</p>
+      <label class="slider"><span>threshold</span><input type="range" data-setting="threshold" min="1" max="100" step="1"><output></output></label>
+      <figure class="hist"><canvas id="histogram" width="720" height="170"></canvas><figcaption>difference values (0 = no change, 255 = largest change). bar height uses a log scale.</figcaption></figure>
+      <div class="views">
+        <figure class="view"><canvas data-view="difference"></canvas><figcaption>difference</figcaption></figure>
+        <figure class="view"><canvas data-view="binary"></canvas><figcaption>binary mask: foreground is white</figcaption></figure>
+      </div>
+      <p class="readout" id="binaryReadout"></p>
+      <p class="hint">If the hand disappears, try a smaller threshold or a background with more contrast. If much of the background turns white, try a larger threshold or record a better background. Choose this using training photos, before the final test.</p>
+      <details class="code"><summary>Show the code</summary><pre data-code="threshold"></pre></details>
+
+      <h3>C. Remove specks and fill small gaps</h3>
+      <p><b>Opening</b> (erode, then dilate) removes small white specks. <b>Closing</b> (dilate, then erode) fills small black gaps. Both slide a small round shape called a <b>kernel</b> over the mask. A kernel that is too big can erase useful details such as the thumb.</p>
+      <label class="slider"><span>kernel size</span><input type="range" data-setting="morphSize" min="1" max="11" step="2"><output></output></label>
+      <div class="views">
+        <figure class="view"><canvas data-view="binary"></canvas><figcaption>raw binary mask</figcaption></figure>
+        <figure class="view"><canvas data-view="opened"></canvas><figcaption>after opening</figcaption></figure>
+        <figure class="view"><canvas data-view="cleaned"></canvas><figcaption>after closing</figcaption></figure>
+      </div>
+      <details class="code"><summary>Show the code</summary><pre data-code="ellipseKernel,morph,openMask,closeMask"></pre></details>
+    </section>
+
+    <!-- 6 -->
+    <section id="silhouette" class="step">
+      <header class="step-head"><span class="num">06</span><h2>Isolate the hand and normalize its size</h2></header>
+      <p>Keep only the <b>largest connected white region</b>. In a controlled scene it should be the hand, but this step does not understand anatomy: a moving object or a large shadow can also become the largest region. Check the result.</p>
+      <p>Then crop around that region and center it in a <b>64 × 64</b> square, keeping its proportions. It is never rotated or flipped, because thumb direction is the label being learned.</p>
+      <div class="views">
+        <figure class="view"><canvas data-view="boxed"></canvas><figcaption>foreground bounding box</figcaption></figure>
+        <figure class="view"><canvas data-view="mask"></canvas><figcaption>largest region</figcaption></figure>
+        <figure class="view"><canvas data-view="normalized" class="px"></canvas><figcaption>normalized 64 × 64 silhouette</figcaption></figure>
+      </div>
+      <p class="readout" id="silhouetteReadout"></p>
+      <h3>The same steps for every image</h3>
+      <p>The <code>preprocess</code> function below packages steps 4 to 6. It also <b>rejects</b> a photo when the hand covers less than 2% of the square, or when more than 75% of the square changed. An empty or broken mask should not be sent to the classifier as if it were a hand. The same function is used for training, testing and live predictions, and its settings are saved with the trained model.</p>
+      <details class="code"><summary>Show the code</summary><pre data-code="largestComponent,boundingBox,normalizeSilhouette,preprocess"></pre></details>
+    </section>
+
+    <!-- 7 -->
+    <section id="features" class="step">
+      <header class="step-head"><span class="num">07</span><h2>Turn the silhouette into numbers</h2></header>
+      <p>The classifier needs a list of numbers, not a picture. <b>Histogram of Oriented Gradients (HOG)</b> describes the directions of edges in different parts of the image. Where the edges are, and which way they point, separates an upward thumb from a downward one.</p>
+      <p>The silhouette is split into 8 × 8 pixel <b>cells</b>. Each cell sorts its edges into 9 direction bins. Neighbouring cells are grouped into overlapping 16 × 16 pixel <b>blocks</b> and normalized.</p>
+      <div class="views">
+        <figure class="view"><canvas data-view="normalized" class="px"></canvas><figcaption>normalized silhouette</figcaption></figure>
+        <figure class="view"><canvas data-view="edges" class="px"></canvas><figcaption>edge strength</figcaption></figure>
+        <figure class="view"><canvas data-view="hog"></canvas><figcaption>edge directions per cell</figcaption></figure>
+        <figure class="view"><canvas data-view="vector" class="px"></canvas><figcaption>the full feature vector, one square per number</figcaption></figure>
+      </div>
+      <p class="readout" id="featureReadout"></p>
+      <details class="code"><summary>Show the code</summary><pre data-code="gradients,hogFeatures"></pre></details>
+    </section>
+
+    <!-- 8 -->
+    <section id="train" class="step">
+      <header class="step-head"><span class="num">08</span><h2>Build the dataset and train a classifier</h2></header>
+      <p>Every training photo goes through the same pipeline, each with its own background reference. Photos with a rejected mask are counted and shown. If many are rejected, fix the masking in step 5. Adding more unusable photos will not help.</p>
+      <p>The image processing and HOG steps use fixed rules. The <b>logistic regression</b> classifier is the part that learns from your labeled examples. Despite its name it is a classification model: it learns one weight per feature, adds up weight × feature, and turns the total into a probability. Before that, every feature is <b>standardized</b> (shifted and scaled to mean 0 and spread 1) using training photos only. Nothing is pretrained; the model starts at zero and learns only from your photos.</p>
+      <p class="notice" data-stale hidden>The processing settings changed after training. Testing and live predictions still use the settings saved with the model. Train again to use the new ones.</p>
+      <div class="controls"><button class="btn primary" id="trainButton">Process all photos and train</button></div>
+      <p class="status" id="trainStatus" role="status"></p>
+
+      <div id="trainResults" hidden>
+        <div id="trainDataset" hidden>
+        <div class="stats" id="trainStats"></div>
+        <h3>Every processed training photo</h3>
+        <p class="hint">These silhouettes are what the classifier sees. Rejected photos have a dashed outline; hover over one to see why.</p>
+        <div class="grid-label">thumbs up</div><div class="silhouettes" id="silUp"></div>
+        <div class="grid-label">thumbs down</div><div class="silhouettes" id="silDown"></div>
+
+        <h3>Average silhouette of each gesture</h3>
+        <div class="views narrow">
+          <figure class="view"><canvas id="avgUp" class="px"></canvas><figcaption>average thumbs up</figcaption></figure>
+          <figure class="view"><canvas id="avgDown" class="px"></canvas><figcaption>average thumbs down</figcaption></figure>
+        </div>
+        </div>
+
+        <div id="trainLearned" hidden>
+        <h3>Training steps</h3>
+        <p>Each step adjusts all 1,765 weights to lower the <b>loss</b>, a measure of how wrong the model's probabilities are on the training photos (lower is better). This lab uses Newton's method, which usually finishes in about ten steps.</p>
+        <div class="chart-row">
+          <svg id="lossChart" viewBox="0 0 520 220" role="img" aria-label="Training loss by step"></svg>
+          <ol class="step-log" id="stepLog"></ol>
+        </div>
+        <p class="readout" id="trainAccuracy"></p>
+
+        <h3>What the model learned</h3>
+        <p>Each line is an edge direction in one cell. Bright lines on the left are edges that push the prediction toward thumbs up; on the right, toward thumbs down.</p>
+        <div class="views narrow">
+          <figure class="view"><canvas id="weightsUp"></canvas><figcaption>edges that vote thumbs up</figcaption></figure>
+          <figure class="view"><canvas id="weightsDown"></canvas><figcaption>edges that vote thumbs down</figcaption></figure>
+        </div>
+        </div>
+      </div>
+      <details class="code"><summary>Show the code</summary><pre data-code="buildDataset,fitScaler,standardize,trainLogisticRegression,trainModel"></pre></details>
+    </section>
+
+    <!-- 9 -->
+    <section id="test" class="step">
+      <header class="step-head"><span class="num">09</span><h2>Test on new photos</h2></header>
+      <p>A score on photos the model has already seen says little. Move your hand away and make a <b>fresh recording</b>: record a new background, then about <b>20 photos of each gesture</b>. Do not reuse frames from the training burst.</p>
+      <p>Keep conditions similar at first. A different person or room is a useful extra test (record a new background for it). If you use these results to change settings or photos, they become practice results, so collect a new test afterwards.</p>
+      <p class="notice" data-stale hidden>The processing settings changed after training. The test uses the settings saved with the model. Train again to use the new ones.</p>
+      <h3>Test background</h3>
+      <div data-background="test"></div>
+      <h3>Test photos</h3>
+      <div data-collector="test"></div>
+      <div class="controls"><button class="btn primary" id="testButton">Evaluate the model</button></div>
+      <p class="status" id="testStatus" role="status"></p>
+      <div id="testResults" hidden>
+        <div class="stats" id="testStats"></div>
+        <div class="results-row">
+          <div>
+            <h3>Confusion matrix</h3>
+            <p class="hint">Rows are the true label; columns are the prediction. Correct answers are on the diagonal.</p>
+            <table class="confusion" id="confusion"></table>
+          </div>
+          <div class="per-label" id="perLabel"></div>
+        </div>
+        <h3 id="mistakesTitle">Mistakes</h3>
+        <div class="cards" id="mistakes"></div>
+        <div id="rejectedBlock">
+          <h3>Rejected masks</h3>
+          <div class="cards" id="rejected"></div>
+        </div>
+      </div>
+      <details class="code"><summary>Show the code</summary><pre data-code="predict,probabilityUp,evaluate"></pre></details>
+    </section>
+
+    <!-- 10 -->
+    <section id="live" class="step">
+      <header class="step-head"><span class="num">10</span><h2>Try live predictions</h2></header>
+      <p>Record a current empty background, then click <b>Start predictions</b>. Every frame goes through the same steps, using the settings saved with the model. Scores are averaged over the last three frames to reduce flicker.</p>
+      <p>An empty or mostly changed mask shows a message instead of a label. That check is not a learned third class: an open palm or another object will still get one of the two labels, and a high score does not guarantee a correct prediction.</p>
+      <p class="notice" data-stale hidden>The processing settings changed after training. Live predictions use the settings saved with the model. Train again to use the new ones.</p>
+      <h3>Live background</h3>
+      <div data-background="live"></div>
+      <h3>Predictions</h3>
+      <div class="cam-row">
+        <div class="cam-col">
+          <div data-camera></div>
+          <div class="controls"><button class="btn primary" id="liveButton">Start predictions</button></div>
+          <p class="status" id="liveStatus" role="status"></p>
+        </div>
+        <div class="side-col">
+          <div class="prediction" id="prediction">
+            <div class="prediction-label" id="predictionLabel"></div>
+            <div class="meter"><div class="meter-fill" id="predictionMeter"></div></div>
+            <div class="meter-ends"><span>down</span><span>up</span></div>
+            <div class="prediction-score" id="predictionScore">model score</div>
+          </div>
+          <div class="mini-views">
+            <figure class="view"><canvas id="liveMask" width="224" height="224"></canvas><figcaption>foreground mask</figcaption></figure>
+            <figure class="view"><canvas id="liveInput" class="px" width="64" height="64"></canvas><figcaption>classifier input</figcaption></figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section id="save" class="step">
+      <header class="step-head"><span class="num">11</span><h2>Save your work</h2></header>
+      <p>Download a ZIP containing your photos, background references, processed silhouettes and trained model. Load it later, on any computer, to continue.</p>
+      <div class="controls">
+        <button class="btn primary" id="saveButton">Download project (.zip)</button>
+        <label class="btn" for="loadInput">Load project (.zip)</label>
+        <input type="file" id="loadInput" accept=".zip,application/zip" hidden>
+        <button class="btn" id="resetButton">Start over</button>
+      </div>
+      <p class="status" id="saveStatus" role="status"></p>
+    </section>
+
+    <section id="help" class="step">
+      <header class="step-head"><span class="num">--</span><h2>Investigate a failure</h2></header>
+      <p>Try a different hand position, a greater distance, or another person. Decide whether the problem starts with the <b>mask</b> or with <b>classifying</b> a reasonable silhouette.</p>
+      <ul>
+        <li><b>Masking problem:</b> the hand disappears, shadows dominate, or the scene turns white. Check the background, lighting and threshold.</li>
+        <li><b>Classification problem:</b> the silhouette looks reasonable but the label is wrong. Add varied, correctly labeled examples and train again.</li>
+        <li><b>Unknown gesture:</b> an open palm or another object is assigned one of the two learned labels. A further project can add and evaluate more categories.</li>
+      </ul>
+      <p>After using a test to make changes, collect a new final test. Report sample counts with your results. A useful demonstration includes a success, a failure, and an explanation of an improvement.</p>
+      <h3>Troubleshooting</h3>
+      <dl class="faq">
+        <dt>Permission denied</dt>
+        <dd>Click the camera icon in the address bar, allow the camera for this site, then click Start camera again. Also check the operating system's camera permission for the browser. If a school policy blocks it, use the practice camera.</dd>
+        <dt>Camera busy or blank</dt>
+        <dd>Close other apps or tabs using the webcam (video calls, other camera sites) and click Start camera again.</dd>
+        <dt>Mask mostly white</dt>
+        <dd>The camera moved or the lighting changed. Keep the camera still and record the background again.</dd>
+        <dt>Mask loses the thumb</dt>
+        <dd>Improve contrast with the background, lower the threshold slightly, or try a smaller kernel. Check training photos before the final test.</dd>
+        <dt>New settings do not affect live predictions</dt>
+        <dd>Train again in step 8. Testing and live predictions use the settings saved with the model.</dd>
+        <dt>The page was refreshed and everything is gone</dt>
+        <dd>Photos only exist in the open tab. Load a saved ZIP in step 11, or collect new photos.</dd>
+      </dl>
+    </section>
+
+    <footer class="foot">
+      Adapted from the thumbs up / thumbs down OpenCV and scikit-learn notebook. The same steps are rewritten in plain JavaScript so they run in a browser. All images and scores on this page come from the photos collected in this session.
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>
